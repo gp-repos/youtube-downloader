@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows;
 using Microsoft.Extensions.Configuration;
 
@@ -14,6 +15,8 @@ namespace YouTubeDownloader
         {
             InitializeComponent();
 
+            StatusTextBlock.Text = "Status: " + CookieHelper.CookieCopier();
+
             // Load configuration
             var config = new ConfigurationBuilder()
                 .SetBasePath(AppContext.BaseDirectory)
@@ -25,11 +28,6 @@ namespace YouTubeDownloader
 
             // Ensure output directory exists
             Directory.CreateDirectory(outputDir);
-        }
-        
-        private void UrlTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        {
-            // This method updates the placeholder visibility as the user types.
         }
 
         private async void DownloadButton_Click(object sender, RoutedEventArgs e)
@@ -48,10 +46,14 @@ namespace YouTubeDownloader
                 return;
             }
 
-            var arguments = $"-f \"bv*+ba/b\" -o \"{Path.Combine(outputDir, "%(title)s.%(ext)s")}\" --cookies www.youtube.com_cookies.txt {url}";
+            var arguments =
+                $"-f \"bv*+ba/b\" -o \"{Path.Combine(outputDir, "%(title)s.%(ext)s")}\" --windows-filenames --trim-filenames 200 --cookies youtube_cookies.txt {url}";
             StatusTextBlock.Text = "Status: Downloading...";
             DownloadButton.IsEnabled = false;
-
+            DownloadProgressBar.Minimum = 0;
+            DownloadProgressBar.Maximum = 100;
+            DownloadProgressBar.Value = 0;
+            
             try
             {
                 await RunYtDlp(arguments);
@@ -91,10 +93,10 @@ namespace YouTubeDownloader
                     var line = process.StandardOutput.ReadLine();
                     if (line.Contains("%"))
                     {
-                        var percentageString = line.Split('%')[0].Trim();
-                        if (double.TryParse(percentageString, out var percentage))
+                        var percentage = ExtractPercentage(line);
+                        if (percentage.HasValue)
                         {
-                            Dispatcher.Invoke(() => DownloadProgressBar.Value = percentage);
+                            Dispatcher.Invoke(() => DownloadProgressBar.Value = percentage.Value);
                         }
                     }
                 }
@@ -109,5 +111,16 @@ namespace YouTubeDownloader
             });
         }
 
+        private int? ExtractPercentage(string input)
+        {
+            // Define a regex pattern to match percentages (digits followed by %)
+            var pattern = @"\b(\d+)%\b";
+
+            // Use Regex to find a match
+            var match = Regex.Match(input, pattern);
+
+            // If a match is found, parse it as an integer; otherwise, return null
+            return match.Success ? int.Parse(match.Groups[1].Value) : (int?)null;
+        }
     }
 }
